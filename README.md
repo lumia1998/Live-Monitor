@@ -217,6 +217,3 @@ curl -X POST http://127.0.0.1:8000/api/rooms \
 | POST | `/api/monitor/start` | 启动后台监控 |
 | POST | `/api/monitor/stop` | 停止后台监控 |
 
-## 旧录制器
-
-旧的录制入口已保留为 `recorder_legacy.py`，用于参考或回退。当前默认入口 `main.py` 不执行录制，不检查 FFmpeg。
