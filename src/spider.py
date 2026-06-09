@@ -673,6 +673,29 @@ async def get_bilibili_room_info_h5(url: str, proxy_addr: OptionalStr = None, co
     return title
 
 
+def pick_image_url(value) -> OptionalStr:
+    if isinstance(value, str):
+        if value.startswith("//"):
+            return "https:" + value
+        if value.startswith(("http://", "https://", "data:image/")):
+            return value
+    if isinstance(value, list):
+        for item in value:
+            url = pick_image_url(item)
+            if url:
+                return url
+    if isinstance(value, dict):
+        for key in ("url", "uri", "src"):
+            url = pick_image_url(value.get(key))
+            if url:
+                return url
+        for key in ("url_list", "urls", "thumbnails"):
+            url = pick_image_url(value.get(key))
+            if url:
+                return url
+    return None
+
+
 @trace_error_decorator
 async def get_bilibili_room_info(url: str, proxy_addr: OptionalStr = None, cookies: OptionalStr = None) -> dict:
     headers = {
@@ -695,9 +718,35 @@ async def get_bilibili_room_info(url: str, proxy_addr: OptionalStr = None, cooki
         json_str2 = await async_req(url=api, proxy_addr=proxy_addr, headers=headers)
         anchor_info = json.loads(json_str2)
         anchor_name = anchor_info['data']['info']['uname']
+        avatar_url = anchor_info['data']['info'].get('face', '')
 
-        title = await get_bilibili_room_info_h5(url, proxy_addr, cookies)
-        return {"anchor_name": anchor_name, "live_status": live_status, "room_url": url, "title": title}
+        h5_data = {}
+        try:
+            h5_api = f'https://api.live.bilibili.com/xlive/web-room/v1/index/getH5InfoByRoom?room_id={room_id}'
+            h5_str = await async_req(url=h5_api, proxy_addr=proxy_addr, headers=headers)
+            h5_data = json.loads(h5_str).get('data') or {}
+        except Exception as e:
+            print(f"Bilibili H5 room info fetch failed: {e}")
+
+        room_h5 = h5_data.get('room_info') or {}
+        anchor_h5 = h5_data.get('anchor_info') or {}
+        anchor_base = anchor_h5.get('base_info') or {}
+        watched_show = h5_data.get('watched_show') or {}
+        like_info = h5_data.get('like_info_v3') or {}
+        title = room_h5.get('title') or await get_bilibili_room_info_h5(url, proxy_addr, cookies)
+        return {
+            "anchor_name": anchor_base.get('uname') or anchor_name,
+            "live_status": live_status,
+            "room_url": url,
+            "title": title,
+            "cover_url": room_h5.get('cover') or room_h5.get('keyframe') or "",
+            "avatar_url": anchor_base.get('face') or avatar_url,
+            "viewer_count": room_h5.get('online'),
+            "popularity": watched_show.get('text_small') or room_h5.get('online'),
+            "like_count": like_info.get('total_likes'),
+            "area_name": room_h5.get('area_name') or room_h5.get('parent_area_name') or "",
+            "category": room_h5.get('parent_area_name') or "",
+        }
     except Exception as e:
         print(e)
         return {"anchor_name": '', "live_status": False, "room_url": url}
@@ -2099,7 +2148,7 @@ async def get_kugou_stream_url(url: str, proxy_addr: OptionalStr = None, cookies
     return result
 
 
-async def get_twitchtv_room_info(url: str, token: str, proxy_addr: OptionalStr = None, cookies: OptionalStr = None) -> tuple:
+async def get_twitchtv_room_info(url: str, token: str, proxy_addr: OptionalStr = None, cookies: OptionalStr = None) -> dict:
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
         'Accept-Language': 'zh-CN',
@@ -2134,7 +2183,44 @@ async def get_twitchtv_room_info(url: str, token: str, proxy_addr: OptionalStr =
     login_name = user_data["login"]
     nickname = f"{user_data['displayName']}-{login_name}"
     status = True if user_data['stream'] else False
-    return nickname, status
+    result = {
+        "anchor_name": nickname,
+        "is_live": status,
+        "avatar_url": user_data.get("profileImageURL") or "",
+    }
+
+    try:
+        detail_query = {
+            "operationName": "LiveMonitorChannel",
+            "query": "query LiveMonitorChannel($login: String!) { user(login: $login) { login displayName profileImageURL(width: 300) stream { title viewersCount previewImageURL(width: 1280, height: 720) createdAt game { name } } } }",
+            "variables": {"login": uid},
+        }
+        detail_str = await async_req(
+            'https://gql.twitch.tv/gql',
+            proxy_addr=proxy_addr,
+            headers=headers,
+            json_data=detail_query,
+            abroad=True,
+        )
+        detail_user = (json.loads(detail_str).get("data") or {}).get("user") or {}
+        stream_data = detail_user.get("stream") or {}
+        display_name = detail_user.get("displayName") or user_data.get("displayName") or login_name
+        result["anchor_name"] = f"{display_name}-{login_name}"
+        result["avatar_url"] = detail_user.get("profileImageURL") or result["avatar_url"]
+        if stream_data:
+            result |= {
+                "is_live": True,
+                "title": stream_data.get("title") or "",
+                "viewer_count": stream_data.get("viewersCount"),
+                "popularity": stream_data.get("viewersCount"),
+                "cover_url": stream_data.get("previewImageURL") or "",
+                "started_at": stream_data.get("createdAt") or "",
+                "category": ((stream_data.get("game") or {}).get("name") or ""),
+                "area_name": ((stream_data.get("game") or {}).get("name") or ""),
+            }
+    except Exception as e:
+        print(f"Twitch detail data fetch failed: {e}")
+    return result
 
 
 @trace_error_decorator
@@ -2174,8 +2260,8 @@ async def get_twitchtv_stream_data(url: str, proxy_addr: OptionalStr = None, coo
     token = json_data['data']['streamPlaybackAccessToken']['value']
     sign = json_data['data']['streamPlaybackAccessToken']['signature']
 
-    anchor_name, live_status = await get_twitchtv_room_info(url=url, token=token, proxy_addr=proxy_addr, cookies=cookies)
-    result = {"anchor_name": anchor_name, "is_live": live_status}
+    result = await get_twitchtv_room_info(url=url, token=token, proxy_addr=proxy_addr, cookies=cookies)
+    live_status = result["is_live"]
     if live_status:
         play_session_id = random.choice(["bdd22331a986c7f1073628f2fc5b19da", "064bc3ff1722b6f53b0b5b8c01e46ca5"])
         params = {
@@ -3009,18 +3095,35 @@ async def get_youtube_stream_url(url: str, proxy_addr: OptionalStr = None, cooki
         headers['Cookie'] = cookies
 
     html_str = await async_req(url, proxy_addr=proxy_addr, headers=headers, abroad=True)
-    json_str = re.search('var ytInitialPlayerResponse = (.*?);var meta = document\\.createElement', html_str).group(1)
+    match = (
+        re.search(r'var ytInitialPlayerResponse = (.*?);var meta = document\.createElement', html_str, re.DOTALL)
+        or re.search(r'var ytInitialPlayerResponse = (.*?);</script>', html_str, re.DOTALL)
+        or re.search(r'ytInitialPlayerResponse\s*=\s*(\{.*?\});', html_str, re.DOTALL)
+    )
+    if not match:
+        raise RuntimeError("No YouTube player response found")
+    json_str = match.group(1)
     json_data = json.loads(json_str)
     result = {"anchor_name": "", "is_live": False}
     if 'videoDetails' not in json_data:
         print("Error: Please log in to YouTube on your device's webpage and configure cookies in the config.ini")
         return result
-    result['anchor_name'] = json_data['videoDetails']['author']
-    live_status = json_data['videoDetails'].get('isLive')
+    video_details = json_data['videoDetails']
+    thumbnails = (video_details.get('thumbnail') or {}).get('thumbnails') or []
+    result['anchor_name'] = video_details['author']
+    result['title'] = video_details.get('title') or ''
+    result['cover_url'] = pick_image_url(thumbnails[::-1]) or ""
+    result['viewer_count'] = video_details.get('viewCount')
+    result['popularity'] = video_details.get('viewCount')
+    live_status = video_details.get('isLive')
     if live_status:
-        live_title = json_data['videoDetails']['title']
+        live_title = video_details['title']
         m3u8_url = json_data['streamingData']["hlsManifestUrl"]
-        play_url_list = await get_play_url_list(m3u8_url, proxy=proxy_addr, header=headers, abroad=True)
+        try:
+            play_url_list = await get_play_url_list(m3u8_url, proxy=proxy_addr, header=headers, abroad=True)
+        except Exception as e:
+            print(f"YouTube play list fetch failed: {e}")
+            play_url_list = []
         result |= {"is_live": True, "title": live_title, "m3u8_url": m3u8_url, "play_url_list": play_url_list}
     return result
 

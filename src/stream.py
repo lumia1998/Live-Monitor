@@ -24,6 +24,16 @@ from .spider import (
 from .http_clients.async_http import get_response_status
 
 QUALITY_MAPPING = {"OD": 0, "BD": 0, "UHD": 1, "HD": 2, "SD": 3, "LD": 4}
+CARD_FIELD_KEYS = (
+    "cover_url",
+    "avatar_url",
+    "viewer_count",
+    "popularity",
+    "like_count",
+    "area_name",
+    "started_at",
+    "category",
+)
 
 
 def get_quality_index(quality) -> tuple:
@@ -37,6 +47,86 @@ def get_quality_index(quality) -> tuple:
     return quality_str, QUALITY_MAPPING.get(quality_str, 0)
 
 
+def copy_card_fields(target: dict, source: dict) -> dict:
+    for key in CARD_FIELD_KEYS:
+        value = source.get(key)
+        if value is not None and value != "":
+            target[key] = value
+    return target
+
+
+def first_url(*values) -> str:
+    if len(values) != 1:
+        for item in values:
+            url = first_url(item)
+            if url:
+                return url
+        return ""
+    value = values[0]
+    if isinstance(value, str):
+        return value if value.startswith(("http://", "https://", "data:image/")) else ""
+    if isinstance(value, list):
+        for item in value:
+            url = first_url(item)
+            if url:
+                return url
+    if isinstance(value, dict):
+        for key in ("url", "uri", "web_uri"):
+            url = first_url(value.get(key))
+            if url:
+                return url
+        for key in ("url_list", "urls", "urlList"):
+            url = first_url(value.get(key))
+            if url:
+                return url
+    return ""
+
+
+def first_value(*values):
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def extract_douyin_card_fields(json_data: dict) -> dict:
+    owner = json_data.get("owner") or json_data.get("user") or {}
+    stats = json_data.get("stats") or {}
+    room_view_stats = json_data.get("room_view_stats") or {}
+    cover_url = first_url(
+        json_data.get("cover"),
+        json_data.get("room_cover"),
+        json_data.get("background"),
+        json_data.get("dynamic_cover"),
+        json_data.get("cover_uri"),
+    )
+    avatar_url = first_url(owner.get("avatar_thumb"), owner.get("avatar_medium"), owner.get("avatar_large"))
+    user_count = first_value(
+        json_data.get("user_count"),
+        json_data.get("user_count_str"),
+        stats.get("user_count"),
+        stats.get("total_user_str"),
+        room_view_stats.get("display_short"),
+        room_view_stats.get("display_value"),
+    )
+    like_count = first_value(
+        json_data.get("like_count"),
+        json_data.get("digg_count"),
+        stats.get("like_count"),
+        stats.get("digg_count"),
+    )
+    fields = {
+        "cover_url": cover_url,
+        "avatar_url": avatar_url,
+        "viewer_count": user_count if isinstance(user_count, int) else None,
+        "popularity": user_count,
+        "like_count": like_count,
+        "started_at": first_value(json_data.get("create_time"), json_data.get("start_time")),
+        "area_name": first_value(json_data.get("partition_name"), json_data.get("live_room_mode_name")),
+    }
+    return {key: value for key, value in fields.items() if value is not None and value != ""}
+
+
 @trace_error_decorator
 async def get_douyin_stream_url(json_data: dict, video_quality: str, proxy_addr: str) -> dict:
     anchor_name = json_data.get('anchor_name')
@@ -45,6 +135,7 @@ async def get_douyin_stream_url(json_data: dict, video_quality: str, proxy_addr:
         "anchor_name": anchor_name,
         "is_live": False,
     }
+    copy_card_fields(result, extract_douyin_card_fields(json_data))
 
     status = json_data.get("status", 4)
 
@@ -350,10 +441,11 @@ async def get_yy_stream_url(json_data: dict) -> dict:
 async def get_bilibili_stream_url(json_data: dict, video_quality: str, proxy_addr: str, cookies: str) -> dict:
     anchor_name = json_data["anchor_name"]
     if not json_data["live_status"]:
-        return {
+        result = {
             "anchor_name": anchor_name,
             "is_live": False
         }
+        return copy_card_fields(result, json_data)
 
     room_url = json_data['room_url']
 
@@ -369,13 +461,14 @@ async def get_bilibili_stream_url(json_data: dict, video_quality: str, proxy_add
     select_quality = video_quality_options[video_quality]
     play_url = await get_bilibili_stream_data(
         room_url, qn=select_quality, platform='web', proxy_addr=proxy_addr, cookies=cookies)
-    return {
+    result = {
         'anchor_name': json_data['anchor_name'],
         'is_live': True,
         'title': json_data['title'],
         'quality': video_quality,
         'record_url': play_url
     }
+    return copy_card_fields(result, json_data)
 
 
 @trace_error_decorator
@@ -413,15 +506,26 @@ async def get_stream_url(json_data: dict, video_quality: str, url_type: str = 'm
     if not json_data['is_live']:
         return json_data
 
-    play_url_list = json_data['play_url_list']
-    while len(play_url_list) < 5:
-        play_url_list.append(play_url_list[-1])
-
-    video_quality, selected_quality = get_quality_index(video_quality)
+    play_url_list = json_data.get('play_url_list') or []
     data = {
         "anchor_name": json_data['anchor_name'],
         "is_live": True
     }
+    copy_card_fields(data, json_data)
+    if not play_url_list:
+        data |= {
+            "title": json_data.get('title'),
+            "quality": video_quality,
+            "m3u8_url": json_data.get('m3u8_url'),
+            "flv_url": json_data.get('flv_url'),
+            "record_url": json_data.get('m3u8_url') or json_data.get('flv_url'),
+        }
+        return data
+
+    while len(play_url_list) < 5:
+        play_url_list.append(play_url_list[-1])
+
+    video_quality, selected_quality = get_quality_index(video_quality)
 
     def get_url(key):
         play_url = play_url_list[selected_quality]

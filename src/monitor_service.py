@@ -1,0 +1,159 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from typing import Any
+
+from src.live_status import LiveStatus, LiveStatusResolver
+from src.logger import logger
+from src.monitor_config import ConfigStore, RoomSource, RuntimeSettings
+from src.push_service import PushService
+
+
+@dataclass(slots=True)
+class MonitorSnapshot:
+    running: bool = False
+    last_check_at: str = ""
+    next_check_in: int = 0
+    rooms: dict[str, LiveStatus] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self, include_stream_url: bool = False) -> dict[str, Any]:
+        return {
+            "running": self.running,
+            "last_check_at": self.last_check_at,
+            "next_check_in": self.next_check_in,
+            "rooms": [room.to_dict(include_stream_url=include_stream_url) for room in self.rooms.values()],
+            "errors": self.errors[-20:],
+        }
+
+
+class MonitorService:
+    def __init__(self, config_store: ConfigStore | None = None) -> None:
+        self.config_store = config_store or ConfigStore()
+        self.settings: RuntimeSettings = self.config_store.load_runtime_settings()
+        self.resolver = LiveStatusResolver(self.settings)
+        self.push_service = PushService(self.settings.push)
+        self.snapshot = MonitorSnapshot()
+        self._previous_live_state: dict[str, bool] = {}
+        self._task: asyncio.Task | None = None
+        self._stop_event = asyncio.Event()
+        self._check_lock = asyncio.Lock()
+
+    def reload_settings(self) -> RuntimeSettings:
+        self.settings = self.config_store.load_runtime_settings()
+        self.resolver.refresh_settings(self.settings)
+        self.push_service.refresh_settings(self.settings.push)
+        return self.settings
+
+    def list_sources(self, include_disabled: bool = True) -> list[RoomSource]:
+        return self.config_store.load_room_sources(include_disabled=include_disabled)
+
+    async def start(self) -> None:
+        if self._task and not self._task.done():
+            return
+        self._stop_event = asyncio.Event()
+        self.snapshot.running = True
+        self._task = asyncio.create_task(self._run_loop(), name="live-monitor-loop")
+
+    async def stop(self) -> None:
+        self._stop_event.set()
+        if self._task:
+            await self._task
+        self.snapshot.running = False
+
+    async def _run_loop(self) -> None:
+        logger.info("直播监控后台任务已启动")
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    await self.check_all(trigger_push=True)
+                except Exception as exc:
+                    logger.error(f"直播监控循环异常: {exc}")
+                    self.snapshot.errors.append(str(exc))
+
+                wait_seconds = self.settings.check_interval
+                for remaining in range(wait_seconds, 0, -1):
+                    if self._stop_event.is_set():
+                        break
+                    self.snapshot.next_check_in = remaining
+                    await asyncio.sleep(1)
+        finally:
+            self.snapshot.running = False
+            logger.info("直播监控后台任务已停止")
+
+    async def check_all(self, trigger_push: bool = True) -> list[LiveStatus]:
+        self.reload_settings()
+        sources = self.list_sources(include_disabled=False)
+        return await self.check_sources(sources, trigger_push=trigger_push)
+
+    async def check_room(self, source: RoomSource, trigger_push: bool = False) -> LiveStatus:
+        statuses = await self.check_sources([source], trigger_push=trigger_push)
+        return statuses[0]
+
+    async def check_sources(self, sources: Iterable[RoomSource], trigger_push: bool = True) -> list[LiveStatus]:
+        async with self._check_lock:
+            sources = list(sources)
+            statuses = await self.resolver.check_sources(sources) if sources else []
+            for status in statuses:
+                self.snapshot.rooms[status.id] = status
+                self._apply_status_updates(status)
+                if trigger_push:
+                    self._handle_push_event(status)
+            if statuses:
+                self.snapshot.last_check_at = statuses[-1].checked_at
+            self.snapshot.next_check_in = self.settings.check_interval
+            return statuses
+
+    def _handle_push_event(self, status: LiveStatus) -> None:
+        previous = self._previous_live_state.get(status.id)
+        current = status.is_live
+        self._previous_live_state[status.id] = current
+
+        if previous is None:
+            return
+        if previous is False and current is True:
+            logger.info(f"检测到开播: {status.display_name()} {status.url}")
+            self.push_service.push_live_started(status)
+        elif previous is True and current is False:
+            logger.info(f"检测到关播: {status.display_name()} {status.url}")
+            self.push_service.push_live_ended(status)
+
+    def _apply_status_updates(self, status: LiveStatus) -> None:
+        new_cookies = status.extra.get("new_cookies")
+        if new_cookies and status.platform == "SOOP":
+            self.config_store.set_value("Cookie", "sooplive_cookie", new_cookies)
+        elif new_cookies and status.platform == "FlexTV":
+            self.config_store.set_value("Cookie", "flextv_cookie", new_cookies)
+
+        new_token = status.extra.get("new_token")
+        if new_token and status.platform == "PopkonTV":
+            self.config_store.set_value("Authorization", "popkontv_token", new_token)
+
+    def get_snapshot(self) -> MonitorSnapshot:
+        return self.snapshot
+
+    def get_cached_status(self, room_id: str) -> LiveStatus | None:
+        return self.snapshot.rooms.get(room_id)
+
+    def add_room(self, url: str, platform: str = "", name: str = "", enabled: bool = True) -> RoomSource:
+        return self.config_store.add_room(url=url, platform=platform, name=name, enabled=enabled)
+
+    def update_room(
+        self,
+        room_id: str,
+        *,
+        platform: str | None = None,
+        name: str | None = None,
+        enabled: bool | None = None,
+    ) -> RoomSource | None:
+        return self.config_store.update_room(room_id, platform=platform, name=name, enabled=enabled)
+
+    def delete_room(self, room_id: str) -> RoomSource | None:
+        deleted = self.config_store.delete_room(room_id)
+        if deleted:
+            self.snapshot.rooms.pop(room_id, None)
+            self._previous_live_state.pop(room_id, None)
+        return deleted
