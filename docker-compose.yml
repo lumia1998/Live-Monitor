@@ -2,7 +2,6 @@ version: '3.8'
 
 services:
   live-monitor:
-    build: .
     image: ghcr.io/lumia1998/live-monitor:latest
     container_name: live-monitor
     environment:
