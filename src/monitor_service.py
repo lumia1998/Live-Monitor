@@ -10,7 +10,6 @@ from typing import Any
 from src.live_status import LiveStatus, LiveStatusResolver
 from src.logger import logger
 from src.monitor_config import ConfigStore, RoomSource, RuntimeSettings
-from src.push_service import PushService
 
 
 @dataclass(slots=True)
@@ -36,7 +35,6 @@ class MonitorService:
         self.config_store = config_store or ConfigStore()
         self.settings: RuntimeSettings = self.config_store.load_runtime_settings()
         self.resolver = LiveStatusResolver(self.settings)
-        self.push_service = PushService(self.settings.push)
         self.snapshot = MonitorSnapshot()
         self._previous_live_state: dict[str, bool] = {}
         self._detected_live_started_at: dict[str, dt.datetime] = {}
@@ -47,7 +45,6 @@ class MonitorService:
     def reload_settings(self) -> RuntimeSettings:
         self.settings = self.config_store.load_runtime_settings()
         self.resolver.refresh_settings(self.settings)
-        self.push_service.refresh_settings(self.settings.push)
         return self.settings
 
     def list_sources(self, include_disabled: bool = True) -> list[RoomSource]:
@@ -103,29 +100,12 @@ class MonitorService:
                 self._apply_live_duration(status)
                 self.snapshot.rooms[status.id] = status
                 self._apply_status_updates(status)
-                if trigger_push:
-                    self._handle_push_event(status)
+                self._previous_live_state[status.id] = status.is_live
             if statuses:
                 self.snapshot.last_check_at = statuses[-1].checked_at
             self.snapshot.next_check_in = self.settings.check_interval
             return statuses
 
-    def _handle_push_event(self, status: LiveStatus) -> None:
-        if status.error:
-            return
-
-        previous = self._previous_live_state.get(status.id)
-        current = status.is_live
-        self._previous_live_state[status.id] = current
-
-        if previous is None:
-            return
-        if previous is False and current is True:
-            logger.info(f"检测到开播: {status.display_name()} {status.url}")
-            self.push_service.push_live_started(status)
-        elif previous is True and current is False:
-            logger.info(f"检测到关播: {status.display_name()} {status.url}")
-            self.push_service.push_live_ended(status)
 
     def _apply_live_duration(self, status: LiveStatus) -> None:
         checked_at = parse_datetime(status.checked_at)

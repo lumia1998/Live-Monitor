@@ -110,15 +110,6 @@ class RoomSource:
         }
 
 
-@dataclass(slots=True)
-class PushSettings:
-    channels: list[str] = field(default_factory=list)
-    title: str = "直播间状态更新通知"
-    begin_template: str = ""
-    over_template: str = ""
-    begin_enabled: bool = True
-    over_enabled: bool = False
-    webhook_url: str = ""
 
 
 @dataclass(slots=True)
@@ -145,7 +136,6 @@ class RuntimeSettings:
     cookies: dict[str, str] = field(default_factory=dict)
     accounts: dict[str, str] = field(default_factory=dict)
     authorization: dict[str, str] = field(default_factory=dict)
-    push: PushSettings = field(default_factory=PushSettings)
     api: ApiSettings = field(default_factory=ApiSettings)
 
 
@@ -319,15 +309,6 @@ class ConfigStore:
                 except ValueError:
                     return default
 
-            push = PushSettings(
-                channels=split_csv(get("推送配置", "直播状态推送渠道", "")),
-                title=get("推送配置", "自定义推送标题", "直播间状态更新通知"),
-                begin_template=get("推送配置", "自定义开播推送内容", ""),
-                over_template=get("推送配置", "自定义关播推送内容", ""),
-                begin_enabled=get_bool("推送配置", "开播推送开启(是/否)", "是"),
-                over_enabled=get_bool("推送配置", "关播推送开启(是/否)", "否"),
-                webhook_url=get("推送配置", "自定义Webhook接口链接", ""),
-            )
             api = ApiSettings(
                 host=get("API服务", "监听地址", "0.0.0.0"),
                 port=get_int("API服务", "监听端口", 8000),
@@ -350,7 +331,6 @@ class ConfigStore:
                 cookies={key: get("Cookie", option, "") for key, option in COOKIE_OPTIONS.items()},
                 accounts={key: get(section, option, default) for key, (section, option, default) in ACCOUNT_OPTIONS.items()},
                 authorization={"popkontv_token": get("Authorization", "popkontv_token", "")},
-                push=push,
                 api=api,
             )
             self._write_parser(parser)
