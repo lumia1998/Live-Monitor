@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -38,6 +39,7 @@ class MonitorService:
         self.push_service = PushService(self.settings.push)
         self.snapshot = MonitorSnapshot()
         self._previous_live_state: dict[str, bool] = {}
+        self._detected_live_started_at: dict[str, dt.datetime] = {}
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._check_lock = asyncio.Lock()
@@ -98,6 +100,7 @@ class MonitorService:
             sources = list(sources)
             statuses = await self.resolver.check_sources(sources) if sources else []
             for status in statuses:
+                self._apply_live_duration(status)
                 self.snapshot.rooms[status.id] = status
                 self._apply_status_updates(status)
                 if trigger_push:
@@ -108,6 +111,9 @@ class MonitorService:
             return statuses
 
     def _handle_push_event(self, status: LiveStatus) -> None:
+        if status.error:
+            return
+
         previous = self._previous_live_state.get(status.id)
         current = status.is_live
         self._previous_live_state[status.id] = current
@@ -120,6 +126,28 @@ class MonitorService:
         elif previous is True and current is False:
             logger.info(f"检测到关播: {status.display_name()} {status.url}")
             self.push_service.push_live_ended(status)
+
+    def _apply_live_duration(self, status: LiveStatus) -> None:
+        checked_at = parse_datetime(status.checked_at)
+
+        if status.error:
+            started_at = self._detected_live_started_at.get(status.id)
+            if started_at:
+                set_live_duration(status, started_at, checked_at)
+            return
+
+        if not status.is_live:
+            self._detected_live_started_at.pop(status.id, None)
+            status.detected_started_at = ""
+            status.live_duration_seconds = None
+            status.live_duration = ""
+            return
+
+        started_at = self._detected_live_started_at.get(status.id)
+        if not started_at:
+            started_at = checked_at
+            self._detected_live_started_at[status.id] = started_at
+        set_live_duration(status, started_at, checked_at)
 
     def _apply_status_updates(self, status: LiveStatus) -> None:
         new_cookies = status.extra.get("new_cookies")
@@ -156,4 +184,36 @@ class MonitorService:
         if deleted:
             self.snapshot.rooms.pop(room_id, None)
             self._previous_live_state.pop(room_id, None)
+            self._detected_live_started_at.pop(room_id, None)
         return deleted
+
+
+def parse_datetime(value: str) -> dt.datetime:
+    if value:
+        try:
+            return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
+        except ValueError:
+            pass
+    return dt.datetime.now().astimezone()
+
+
+def set_live_duration(status: LiveStatus, started_at: dt.datetime, checked_at: dt.datetime) -> None:
+    seconds = max(0, int((checked_at - started_at).total_seconds()))
+    status.detected_started_at = started_at.isoformat(timespec="seconds")
+    status.live_duration_seconds = seconds
+    status.live_duration = format_duration(seconds)
+
+
+def format_duration(seconds: int) -> str:
+    if seconds < 60:
+        return "不足1分钟"
+
+    minutes = seconds // 60
+    days, minutes = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(minutes, 60)
+
+    if days:
+        return f"{days}天{hours}小时"
+    if hours:
+        return f"{hours}小时{minutes}分钟"
+    return f"{minutes}分钟"
