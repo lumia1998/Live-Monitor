@@ -118,27 +118,6 @@ class PushSettings:
     over_template: str = ""
     begin_enabled: bool = True
     over_enabled: bool = False
-    dingtalk_url: str = ""
-    dingtalk_phone: str = ""
-    dingtalk_at_all: bool = False
-    wechat_url: str = ""
-    bark_url: str = ""
-    bark_level: str = "active"
-    bark_sound: str = ""
-    tg_token: str = ""
-    tg_chat_id: str = ""
-    email_host: str = ""
-    email_ssl: bool = True
-    smtp_port: str = ""
-    login_email: str = ""
-    email_password: str = ""
-    sender_email: str = ""
-    sender_name: str = ""
-    to_email: str = ""
-    ntfy_url: str = ""
-    ntfy_tags: str = "tada"
-    ntfy_email: str = ""
-    pushplus_token: str = ""
     webhook_url: str = ""
 
 
@@ -347,27 +326,6 @@ class ConfigStore:
                 over_template=get("推送配置", "自定义关播推送内容", ""),
                 begin_enabled=get_bool("推送配置", "开播推送开启(是/否)", "是"),
                 over_enabled=get_bool("推送配置", "关播推送开启(是/否)", "否"),
-                dingtalk_url=get("推送配置", "钉钉推送接口链接", ""),
-                dingtalk_phone=get("推送配置", "钉钉通知@对象(填手机号)", ""),
-                dingtalk_at_all=get_bool("推送配置", "钉钉通知@全体(是/否)", "否"),
-                wechat_url=get("推送配置", "微信推送接口链接", ""),
-                bark_url=get("推送配置", "bark推送接口链接", ""),
-                bark_level=get("推送配置", "bark推送中断级别", "active"),
-                bark_sound=get("推送配置", "bark推送铃声", ""),
-                tg_token=get("推送配置", "tgapi令牌", ""),
-                tg_chat_id=get("推送配置", "tg聊天id(个人或者群组id)", ""),
-                email_host=get("推送配置", "smtp邮件服务器", ""),
-                email_ssl=get_bool("推送配置", "是否使用SMTP服务SSL加密(是/否)", "是"),
-                smtp_port=get("推送配置", "SMTP邮件服务器端口", ""),
-                login_email=get("推送配置", "邮箱登录账号", ""),
-                email_password=get("推送配置", "发件人密码(授权码)", ""),
-                sender_email=get("推送配置", "发件人邮箱", ""),
-                sender_name=get("推送配置", "发件人显示昵称", ""),
-                to_email=get("推送配置", "收件人邮箱", ""),
-                ntfy_url=get("推送配置", "ntfy推送地址", ""),
-                ntfy_tags=get("推送配置", "ntfy推送标签", "tada"),
-                ntfy_email=get("推送配置", "ntfy推送邮箱", ""),
-                pushplus_token=get("推送配置", "pushplus推送token", ""),
                 webhook_url=get("推送配置", "自定义Webhook接口链接", ""),
             )
             api = ApiSettings(

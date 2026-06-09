@@ -5,7 +5,6 @@ import json
 import urllib.request
 from typing import Any
 
-from msg_push import bark, dingtalk, ntfy, pushplus, send_email, tg_bot, xizhi
 from src.live_status import LiveStatus
 from src.logger import logger
 from src.monitor_config import PushSettings
@@ -51,56 +50,11 @@ class PushService:
 
     def _push_channel(self, channel: str, status: LiveStatus, event: str, content: str) -> dict[str, Any]:
         title = self.settings.title or "直播间状态更新通知"
-        live_url = status.url
 
-        if channel in {"钉钉", "dingtalk"}:
-            return dingtalk(
-                self.settings.dingtalk_url,
-                content,
-                self.settings.dingtalk_phone,
-                self.settings.dingtalk_at_all,
-            )
-        if channel in {"微信", "xizhi", "息知"}:
-            return xizhi(self.settings.wechat_url, title, content)
-        if channel in {"tg", "telegram"}:
-            return tg_bot(self.settings.tg_chat_id, self.settings.tg_token, content)
-        if channel in {"邮箱", "email", "mail"}:
-            return send_email(
-                self.settings.email_host,
-                self.settings.login_email,
-                self.settings.email_password,
-                self.settings.sender_email,
-                self.settings.sender_name,
-                self.settings.to_email,
-                title,
-                content,
-                self.settings.smtp_port,
-                self.settings.email_ssl,
-            )
-        if channel == "bark":
-            return bark(
-                self.settings.bark_url,
-                title=title,
-                content=content,
-                level=self.settings.bark_level,
-                sound=self.settings.bark_sound,
-                url=live_url,
-            )
-        if channel == "ntfy":
-            return ntfy(
-                self.settings.ntfy_url,
-                title=title,
-                content=content,
-                tags=self.settings.ntfy_tags,
-                email=self.settings.ntfy_email,
-                action_url=live_url,
-            )
-        if channel == "pushplus":
-            return pushplus(self.settings.pushplus_token, title, content)
         if channel in {"webhook", "自定义webhook", "自定义Webhook"}:
             return send_webhook(self.settings.webhook_url, status, event, content, title)
 
-        logger.warning(f"未知推送渠道，已跳过: {channel}")
+        logger.warning(f"推送渠道 [{channel}] 未激活或已被移除，仅支持 webhook 推送")
         return {"success": [], "error": [channel]}
 
 

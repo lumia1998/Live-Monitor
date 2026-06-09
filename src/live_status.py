@@ -32,6 +32,9 @@ class LiveStatus:
     like_count: Any = None
     area_name: str = ""
     started_at: str = ""
+    detected_started_at: str = ""
+    live_duration_seconds: int | None = None
+    live_duration: str = ""
     category: str = ""
     checked_at: str = ""
     error: str = ""
@@ -58,6 +61,9 @@ class LiveStatus:
             "like_count": self.like_count,
             "area_name": self.area_name,
             "started_at": self.started_at,
+            "detected_started_at": self.detected_started_at,
+            "live_duration_seconds": self.live_duration_seconds,
+            "live_duration": self.live_duration,
             "category": self.category,
             "checked_at": self.checked_at,
             "error": self.error,
