@@ -151,6 +151,22 @@ curl -X POST http://127.0.0.1:8000/api/rooms \
   -d '{"url":"https://live.bilibili.com/320","platform":"B站","name":"示例主播"}'
 ```
 
+### 直播时长字段
+
+后端会在首次检测到直播间开播时记录 `detected_started_at`，并在之后的检测结果中返回 `live_duration_seconds` 与格式化后的 `live_duration`。这个时间按后端进程检测到开播的时间计算，不等同于平台真实开播时间；后端重启后会重新统计。
+
+直播状态响应中的相关字段示例：
+
+```json
+{
+  "is_live": true,
+  "started_at": "",
+  "detected_started_at": "2026-06-09T22:31:00+08:00",
+  "live_duration_seconds": 125,
+  "live_duration": "2分钟"
+}
+```
+
 ## Koishi 插件
 
 仓库内提供了 Koishi 插件草稿（`koishi-plugin-live-monitor/`），适用于以下架构：

@@ -125,7 +125,7 @@ class RuntimeSettings:
     config_file: Path
     url_config_file: Path
     default_quality: str = "原画"
-    check_interval: int = 300
+    check_interval: int = 60
     max_concurrency: int = 3
     use_proxy: bool = False
     proxy_addr: str = ""
@@ -320,7 +320,7 @@ class ConfigStore:
                 config_file=self.config_file,
                 url_config_file=self.url_config_file,
                 default_quality="原画",
-                check_interval=max(get_int("监控设置", "检测间隔(秒)", 300), 10),
+                check_interval=max(get_int("监控设置", "检测间隔(秒)", 60), 10),
                 max_concurrency=max(get_int("监控设置", "同一时间访问网络的线程数", 3), 1),
                 use_proxy=get_bool("监控设置", "是否使用代理ip(是/否)", "否"),
                 proxy_addr=get("监控设置", "代理地址", ""),
