@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   live-monitor:
     image: ghcr.io/lumia1998/live-monitor:latest
@@ -8,7 +6,7 @@ services:
       - TERM=xterm-256color
       - TZ=Asia/Shanghai
     ports:
-      - "8000:8000"
+      - "42288:8000"
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs

@@ -1,45 +1,52 @@
 # Live Monitor
 
-Live Monitor 是一个直播间状态监控和提醒服务。它基于原项目的多平台直播状态解析能力，去掉默认直播录制流程，专注于关注主播的开播/关播检测、消息推送和 API 调用。
+Live Monitor 是一个多平台直播间开播/关播监控和提醒服务。基于 [DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) 的解析能力，去除直播录制流程，专注于状态检测、消息推送和 HTTP API。
 
-## 功能
+## 功能特性
 
-- 监控 `config/URL_config.ini` 中关注的主播直播间。
-- 检测开播和关播状态变化，并按配置推送通知。
-- 提供 HTTP API，可查询状态、手动检测、增删改关注列表、启动或停止后台监控。
-- 默认不返回直播源地址；如确实需要，可在配置中开启。
-- 默认不依赖 FFmpeg，不会录制直播视频。
+- 定时检测 `config/URL_config.ini` 中配置的直播间状态
+- 开播/关播变化时自动推送通知（支持多渠道）
+- 提供 HTTP API，支持查询状态、手动检测、动态增删改关注列表、启停后台监控
+- 默认不返回直播源地址，默认不依赖 FFmpeg，不录制视频
+- 支持代理配置（针对国内无法访问的平台）
+- 配置文件热加载，无需重启服务
 
 ## 支持平台
 
-复用原项目解析能力，支持抖音、TikTok、快手、虎牙、斗鱼、YY、B站、小红书、Bigo、Blued、SOOP、网易 CC、千度热播、PandaTV、猫耳 FM、Look、WinkTV、FlexTV、PopkonTV、TwitCasting、百度、微博、酷狗、Twitch、LiveMe、花椒、流星、ShowRoom、Acfun、映客、音播、知乎、CHZZK、嗨秀、VV星球、17Live、浪Live、畅聊、漂漂、六间房、乐嗨、花猫、Shopee、Youtube、淘宝、京东、Faceit、咪咕、连接、来秀、Picarto 等平台。
+抖音、TikTok、快手、虎牙、斗鱼、YY、B站、小红书、Bigo、Blued、SOOP、网易CC、千度热播、PandaTV、猫耳FM、Look、WinkTV、FlexTV、PopkonTV、TwitCasting、百度、微博、酷狗、Twitch、LiveMe、花椒、流星、ShowRoom、Acfun、映客、音播、知乎、CHZZK、嗨秀、VV星球、17Live、浪Live、畅聊、漂漂、六间房、乐嗨、花猫、Shopee、YouTube、淘宝、京东、Faceit、咪咕、连接、来秀、Picarto 等。
 
-所有平台都会先直接检测。若某个平台在当前网络下无法访问，API 会返回检测失败提示；这时可以在 `config/config.ini` 的 `[监控设置]` 中配置代理后再尝试。
+> 所有平台均直接检测，无法访问的平台可在配置中启用代理。
 
-## 安装运行
+## 部署
 
-### 1. 本地直接运行
+### Docker Compose（推荐）
 
-```bash
-pip install -r requirements.txt
-python main.py
+将以下 `docker-compose.yml` 复制到服务器任意目录，执行启动命令即可，无需下载源码。
+
+```yaml
+services:
+  live-monitor:
+    image: ghcr.io/lumia1998/live-monitor:latest
+    container_name: live-monitor
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    restart: unless-stopped
 ```
 
-启动后默认监听：
-
-```text
-http://127.0.0.1:8000
+```bash
+docker compose up -d
 ```
 
-### 2. 使用 Docker 部署
+首次启动时，容器会在 `./config` 目录下自动生成 `config.ini` 和 `URL_config.ini` 两个配置文件。
 
-#### 本地构建并运行 (Docker CLI)
-如果您想直接从本地代码构建镜像并运行：
+### Docker CLI
+
 ```bash
-# 构建镜像
-docker build -t live-monitor:latest .
-
-# 运行容器（挂载配置文件和日志目录以进行持久化，设置时区为上海）
 docker run -d \
   --name live-monitor \
   -p 8000:8000 \
@@ -47,50 +54,39 @@ docker run -d \
   -v ./logs:/app/logs \
   -e TZ=Asia/Shanghai \
   --restart unless-stopped \
-  live-monitor:latest
+  ghcr.io/lumia1998/live-monitor:latest
 ```
 
-#### 使用 Docker Compose 部署 (推荐)
-仓库中已配置好 `docker-compose.yml`。可以直接在项目根目录下执行：
+### 本地运行
+
+需要 Python 3.10+，并已安装 Node.js（部分平台的 JS 解析依赖）。
+
 ```bash
-# 后台构建并启动服务
-docker compose up -d --build
+pip install -r requirements.txt
+python main.py
 ```
 
-**Docker Compose 的优势与配置说明**：
-- **挂载卷 (Volumes)**：配置文件映射到 `./config`，日志映射到 `./logs`。在宿主机修改配置（如修改监控列表 `config/URL_config.ini` 或核心设置 `config/config.ini`）会直接同步到容器中。
-- **时区 (Timezone)**：容器时区已设置为 `Asia/Shanghai`，保证日志和监控定时的时间与国内时间一致。
-- **自启动**：`restart: unless-stopped` 保证在系统重启或服务崩溃时容器能够自动拉起。
+启动后默认监听 `http://127.0.0.1:8000`。
 
-#### 使用预构建的 GHCR 镜像
-项目配置了 GitHub Actions 自动构建工作流。您无需本地构建，即可拉取 GitHub 官方托管的 Docker 镜像：
-```bash
-docker pull ghcr.io/lumia1998/live-monitor:latest
-```
-若使用预构建镜像，可在 `docker-compose.yml` 中直接使用 `image: ghcr.io/lumia1998/live-monitor:latest` 并注释/删除 `build: .` 部分。
+## 配置
 
-## 配置关注主播
+### 添加监控主播
 
-编辑 `config/URL_config.ini`，一行一个直播间地址：
+编辑 `config/URL_config.ini`，一行一个直播间：
 
-```text
+```ini
 https://live.douyin.com/745964462470
 https://live.bilibili.com/320,平台: B站,主播: 自定义名称
 # https://www.huya.com/52333
 ```
 
-支持格式：
+- 支持格式：`直播间地址` 或 `直播间地址,平台: 平台名,主播: 主播名`
+- 行首加 `#` 表示暂停监控该直播间
+- 修改后无需重启，下次检测周期自动生效
 
-```text
-直播间地址
-直播间地址,平台: 平台名,主播: 主播名
-```
+### 核心配置
 
-行首加 `#` 表示暂停监控。
-
-## 核心配置
-
-主要配置在 `config/config.ini`：
+编辑 `config/config.ini`：
 
 ```ini
 [监控设置]
@@ -107,22 +103,47 @@ API访问令牌 =
 是否启动监控后台任务(是/否) = 是
 ```
 
-如果设置了 `API访问令牌`，API 请求需要带其中一种认证头：
+### 推送配置
 
-```bash
--H "X-API-Token: your-token"
--H "Authorization: Bearer your-token"
+在 `config/config.ini` 的 `[推送配置]` 中填入渠道和对应参数：
+
+```ini
+[推送配置]
+直播状态推送渠道 = bark,webhook       # 多个渠道用逗号分隔
+开播推送开启(是/否) = 是
+关播推送开启(是/否) = 否
+自定义推送标题 = 直播间状态更新通知
+自定义开播推送内容 =   # 留空使用默认模板
+自定义关播推送内容 =
 ```
 
-## 推送配置
+支持的推送渠道：
 
-`直播状态推送渠道` 支持多个渠道，用逗号分隔：
+| 渠道关键字 | 说明 |
+| --- | --- |
+| `微信` / `xizhi` | 息知（微信推送） |
+| `钉钉` / `dingtalk` | 钉钉机器人 |
+| `tg` / `telegram` | Telegram Bot |
+| `邮箱` / `email` | SMTP 邮件 |
+| `bark` | Bark（iOS） |
+| `ntfy` | Ntfy |
+| `pushplus` | PushPlus |
+| `webhook` | 自定义 Webhook |
 
-```text
-微信,钉钉,tg,邮箱,bark,ntfy,pushplus,webhook
-```
+推送内容模板支持以下变量：
 
-通用 webhook 会发送 JSON：
+| 变量 | 说明 |
+| --- | --- |
+| `[直播间名称]` | 主播名称或直播间标题 |
+| `[主播名称]` | 主播名称 |
+| `[平台]` | 平台名称 |
+| `[标题]` | 直播间标题 |
+| `[直播间地址]` | 直播间 URL |
+| `[时间]` | 检测时间 |
+
+#### Webhook 推送格式
+
+自定义 Webhook 会以 POST 发送 JSON：
 
 ```json
 {
@@ -139,71 +160,20 @@ API访问令牌 =
 }
 ```
 
-默认首次检测只建立状态基线，不会推送；之后只有离线到在线、在线到离线发生变化时才会推送。
+`event` 值为 `live_started`（开播）或 `live_ended`（关播）。
 
+> **注意**：首次检测只建立状态基线，不会推送；只有状态发生变化（离线→在线、在线→离线）时才推送。
 
-## Koishi 插件调用
+### API 认证
 
-仓库内提供了插件草稿：`koishi-plugin-live-monitor/`。
+若设置了 `API访问令牌`，所有需要认证的接口请求须携带以下任一 Header：
 
-推荐架构：
-
-- 后端用 Docker 部署 Live Monitor，只负责检测直播状态并提供 API。
-- Koishi 插件里配置主播列表：平台、主播名、直播地址、是否启用、通知频道。
-- 插件定时调用后端 `/api/check`，自己维护状态变化并在 Koishi 里推送提醒。
-
-插件调用后端的请求体示例：
-
-```json
-{
-  "platform": "抖音",
-  "name": "示例主播",
-  "url": "https://live.douyin.com/745964462470",
-  "trigger_push": false
-}
 ```
-
-这样服务器上的 `config/URL_config.ini` 可以只作为后端本地模式的备用配置；实际使用 Koishi 时，主播配置主要放在 Koishi 插件里。
+X-API-Token: your-token
+Authorization: Bearer your-token
+```
 
 ## API
-
-健康检查：
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-获取缓存状态：
-
-```bash
-curl http://127.0.0.1:8000/api/status
-```
-
-手动检测所有关注主播：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/check \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-临时检测一个直播间，不写入关注列表：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/check \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://live.douyin.com/745964462470"}'
-```
-
-新增关注：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/rooms \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://live.bilibili.com/320","platform":"B站","name":"示例主播"}'
-```
-
-接口列表：
 
 | Method | Path | 说明 |
 | --- | --- | --- |
@@ -217,3 +187,51 @@ curl -X POST http://127.0.0.1:8000/api/rooms \
 | POST | `/api/monitor/start` | 启动后台监控 |
 | POST | `/api/monitor/stop` | 停止后台监控 |
 
+### 使用示例
+
+```bash
+# 健康检查
+curl http://127.0.0.1:8000/health
+
+# 获取后台监控状态
+curl http://127.0.0.1:8000/api/status
+
+# 手动检测所有关注主播
+curl -X POST http://127.0.0.1:8000/api/check \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# 临时检测一个直播间（不写入关注列表）
+curl -X POST http://127.0.0.1:8000/api/check \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://live.douyin.com/745964462470"}'
+
+# 新增关注
+curl -X POST http://127.0.0.1:8000/api/rooms \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://live.bilibili.com/320","platform":"B站","name":"示例主播"}'
+```
+
+## Koishi 插件
+
+仓库内提供了 Koishi 插件草稿（`koishi-plugin-live-monitor/`），适用于以下架构：
+
+- 后端使用 Docker 部署 Live Monitor，只负责检测状态并提供 API
+- Koishi 插件维护主播列表，定时调用后端 `/api/check` 并在 Koishi 内推送提醒
+
+插件调用后端的请求体示例：
+
+```json
+{
+  "platform": "抖音",
+  "name": "示例主播",
+  "url": "https://live.douyin.com/745964462470",
+  "trigger_push": false
+}
+```
+
+采用此架构时，`config/URL_config.ini` 可留空，主播配置完全由 Koishi 插件管理。
+
+## License
+
+[MIT](LICENSE)
