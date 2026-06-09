@@ -106,9 +106,11 @@ async def get_douyin_status(json_data: dict) -> dict:
     anchor_name = json_data.get("anchor_name")
     result: dict = {"anchor_name": anchor_name, "is_live": False}
     copy_card_fields(result, extract_douyin_card_fields(json_data))
+    title = json_data.get("title", "")
+    if title:
+        result["title"] = title
     if json_data.get("status") == 2:
         result["is_live"] = True
-        result["title"] = json_data.get("title", "")
     return result
 
 

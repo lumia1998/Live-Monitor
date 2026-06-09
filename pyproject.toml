@@ -1,6 +1,6 @@
 [project]
 name = "LiveMonitor"
-version = "1.0.0"
+version = "1.0.1"
 description = "直播间状态监控提醒服务，支持多平台开播/关播检测、消息推送和 HTTP API 调用"
 readme = "README.md"
 authors = [{name = "lumia1998"}]
