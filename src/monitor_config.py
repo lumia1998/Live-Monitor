@@ -15,10 +15,6 @@ DEFAULT_URL_CONFIG_FILE = PROJECT_ROOT / "config" / "URL_config.ini"
 TEXT_ENCODING = "utf-8-sig"
 
 QUALITY_LABELS = ("原画", "蓝光", "超清", "高清", "标清", "流畅")
-DEFAULT_PROXY_PLATFORMS = (
-    "tiktok, soop, sooplive, pandalive, winktv, flextv, ttinglive, popkontv, "
-    "twitch, liveme, showroom, chzzk, shopee, shp, youtu, youtube, faceit"
-)
 
 COOKIE_OPTIONS = {
     "douyin": "抖音cookie",
@@ -126,23 +122,13 @@ class RuntimeSettings:
     url_config_file: Path
     default_quality: str = "原画"
     check_interval: int = 60
-    max_concurrency: int = 3
-    use_proxy: bool = False
-    proxy_addr: str = ""
-    proxy_platforms: list[str] = field(default_factory=list)
-    extra_proxy_platforms: list[str] = field(default_factory=list)
+    max_concurrency: int = 10
     clean_emoji: bool = True
     include_stream_url: bool = False
     cookies: dict[str, str] = field(default_factory=dict)
     accounts: dict[str, str] = field(default_factory=dict)
     authorization: dict[str, str] = field(default_factory=dict)
     api: ApiSettings = field(default_factory=ApiSettings)
-
-
-def split_csv(value: str) -> list[str]:
-    if not value:
-        return []
-    return [item.strip() for item in re.split(r"[,，|]", value) if item.strip()]
 
 
 def normalize_url(url: str) -> str:
@@ -327,11 +313,7 @@ class ConfigStore:
                 url_config_file=self.url_config_file,
                 default_quality="原画",
                 check_interval=max(get_int("监控设置", "检测间隔(秒)", 60), 10),
-                max_concurrency=max(get_int("监控设置", "同一时间访问网络的线程数", 3), 1),
-                use_proxy=get_bool("监控设置", "是否使用代理ip(是/否)", "否"),
-                proxy_addr=get("监控设置", "代理地址", ""),
-                proxy_platforms=split_csv(get("监控设置", "使用代理的平台(逗号分隔)", DEFAULT_PROXY_PLATFORMS)),
-                extra_proxy_platforms=split_csv(get("监控设置", "额外使用代理的平台(逗号分隔)", "")),
+                max_concurrency=max(get_int("监控设置", "同一时间访问网络的线程数", 10), 1),
                 clean_emoji=get_bool("监控设置", "是否去除名称中的表情符号", "是"),
                 include_stream_url=get_bool("监控设置", "API是否返回直播源地址(是/否)", "否"),
                 cookies={key: get("Cookie", option, "") for key, option in COOKIE_OPTIONS.items()},

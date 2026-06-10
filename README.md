@@ -9,14 +9,13 @@ Live Monitor 是一个多平台直播间开播/关播状态检测服务。基于
 - 返回丰富的直播元数据：开播状态、直播标题、封面、头像、观看人数、人气、点赞数、分区、开播时间
 - 抖音直播间离线时也会尽量保留接口返回的主播名、标题、头像等可用资料
 - 不依赖 FFmpeg，不获取直播流地址，不录制视频
-- 支持代理配置（针对国内无法访问的平台）
 - 配置文件热加载，无需重启服务
 
 ## 支持平台
 
 抖音、TikTok、快手、虎牙、斗鱼、YY、B站、小红书、Bigo、Blued、SOOP、网易CC、千度热播、PandaTV、猫耳FM、Look、WinkTV、FlexTV、PopkonTV、TwitCasting、百度、微博、酷狗、Twitch、LiveMe、花椒、流星、ShowRoom、Acfun、映客、音播、知乎、CHZZK、嗨秀、VV星球、17Live、浪Live、畅聊、漂漂、六间房、乐嗨、花猫、Shopee、YouTube、淘宝、京东、Faceit、咪咕、连接、来秀、Picarto 等。
 
-> 所有平台均直接检测，无法访问的平台可在配置中启用代理。
+> 服务不内置代理配置；无法访问的平台需由运行环境自行解决网络连通性。
 
 ## 部署
 
@@ -92,9 +91,7 @@ https://live.bilibili.com/320,平台: B站,主播: 自定义名称
 ```ini
 [监控设置]
 检测间隔(秒) = 60
-同一时间访问网络的线程数 = 3
-是否使用代理ip(是/否) = 否
-代理地址 =
+同一时间访问网络的线程数 = 10
 
 [API服务]
 监听地址 = 0.0.0.0
@@ -177,7 +174,7 @@ curl -X POST http://127.0.0.1:8000/api/rooms \
 
 ## Koishi 插件
 
-仓库内提供了 Koishi 插件草稿（`koishi-plugin-live-monitor/`），适用于以下架构：
+推荐配合独立的 [`koishi-plugin-live-monitor`](https://github.com/lumia1998/koishi-plugin-live-monitor) 插件使用，适用于以下架构：
 
 - 后端使用 Docker 部署 Live Monitor，只负责检测状态并提供 API
 - Koishi 插件维护主播列表，定时调用后端 `/api/check/batch` 并在 Koishi 内推送提醒

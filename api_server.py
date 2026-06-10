@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Live Monitor API",
     description="直播状态检测服务，不包含直播录制和通知推送功能。",
-    version="1.0.0",
+    version="1.0.2",
     lifespan=lifespan,
 )
 

@@ -6,7 +6,7 @@ import uvicorn
 from src.monitor_config import ConfigStore
 
 
-VERSION = "v1.0.0-monitor"
+VERSION = "v1.0.2-monitor"
 
 
 def main() -> None:

@@ -91,7 +91,6 @@ class LiveStatusResolver:
         checked_at = now_iso()
         platform = "未知平台"
         try:
-            proxy_address = self.proxy_for_url(source.url)
             port_info: dict[str, Any] = {}
             url = source.url
 
@@ -99,80 +98,77 @@ class LiveStatusResolver:
                 platform = "抖音直播"
                 if "v.douyin.com" not in url and "/user/" not in url:
                     json_data = await spider.get_douyin_web_stream_data(
-                        url=url, proxy_addr=proxy_address, cookies=self.cookie("douyin")
+                        url=url, cookies=self.cookie("douyin")
                     )
                 else:
                     json_data = await spider.get_douyin_app_stream_data(
-                        url=url, proxy_addr=proxy_address, cookies=self.cookie("douyin")
+                        url=url, cookies=self.cookie("douyin")
                     )
                 port_info = await stream.get_douyin_status(json_data)
 
             elif "https://www.tiktok.com/" in url:
                 platform = "TikTok直播"
-                require_proxy(url, proxy_address, platform)
                 json_data = await spider.get_tiktok_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("tiktok")
+                    url=url, cookies=self.cookie("tiktok")
                 )
                 port_info = await stream.get_tiktok_status(json_data)
 
             elif "https://live.kuaishou.com/" in url:
                 platform = "快手直播"
                 json_data = await spider.get_kuaishou_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("kuaishou")
+                    url=url, cookies=self.cookie("kuaishou")
                 )
                 port_info = await stream.get_kuaishou_status(json_data)
 
             elif "https://www.huya.com/" in url:
                 platform = "虎牙直播"
                 json_data = await spider.get_huya_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("huya")
+                    url=url, cookies=self.cookie("huya")
                 )
                 port_info = await stream.get_huya_status(json_data)
 
             elif "https://www.douyu.com/" in url:
                 platform = "斗鱼直播"
                 port_info = await spider.get_douyu_info_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("douyu")
+                    url=url, cookies=self.cookie("douyu")
                 )
 
             elif "https://www.yy.com/" in url:
                 platform = "YY直播"
                 json_data = await spider.get_yy_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("yy")
+                    url=url, cookies=self.cookie("yy")
                 )
                 port_info = await stream.get_yy_status(json_data)
 
             elif "https://live.bilibili.com/" in url:
                 platform = "B站直播"
                 json_data = await spider.get_bilibili_room_info(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("bilibili")
+                    url=url, cookies=self.cookie("bilibili")
                 )
                 port_info = await stream.get_bilibili_status(json_data)
 
             elif "http://xhslink.com/" in url or "https://www.xiaohongshu.com/" in url:
                 platform = "小红书直播"
                 port_info = await spider.get_xhs_stream_url(
-                    url, proxy_addr=proxy_address, cookies=self.cookie("xhs")
+                    url, cookies=self.cookie("xhs")
                 )
 
             elif "www.bigo.tv/" in url or "slink.bigovideo.tv/" in url:
                 platform = "Bigo直播"
                 port_info = await spider.get_bigo_stream_url(
-                    url, proxy_addr=proxy_address, cookies=self.cookie("bigo")
+                    url, cookies=self.cookie("bigo")
                 )
 
             elif "https://app.blued.cn/" in url:
                 platform = "Blued直播"
                 port_info = await spider.get_blued_stream_url(
-                    url, proxy_addr=proxy_address, cookies=self.cookie("blued")
+                    url, cookies=self.cookie("blued")
                 )
 
             elif "sooplive.co.kr/" in url or "sooplive.com/" in url:
                 platform = "SOOP"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_sooplive_stream_data(
                     url=url,
-                    proxy_addr=proxy_address,
                     cookies=self.cookie("sooplive"),
                     username=self.account("sooplive_username"),
                     password=self.account("sooplive_password"),
@@ -187,35 +183,31 @@ class LiveStatusResolver:
             elif "qiandurebo.com/" in url:
                 platform = "千度热播"
                 port_info = await spider.get_qiandurebo_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("qiandurebo")
+                    url=url, cookies=self.cookie("qiandurebo")
                 )
 
             elif "www.pandalive.co.kr/" in url:
                 platform = "PandaTV"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_pandatv_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("pandatv")
+                    url=url, cookies=self.cookie("pandatv")
                 )
 
             elif "fm.missevan.com/" in url:
                 platform = "猫耳FM直播"
                 port_info = await spider.get_maoerfm_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("maoerfm")
+                    url=url, cookies=self.cookie("maoerfm")
                 )
 
             elif "www.winktv.co.kr/" in url:
                 platform = "WinkTV"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_winktv_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("winktv")
+                    url=url, cookies=self.cookie("winktv")
                 )
 
             elif "www.flextv.co.kr/" in url or "www.ttinglive.com/" in url:
                 platform = "FlexTV"
-                require_proxy(url, proxy_address, platform)
                 json_data = await spider.get_flextv_stream_data(
                     url=url,
-                    proxy_addr=proxy_address,
                     cookies=self.cookie("flextv"),
                     username=self.account("flextv_username"),
                     password=self.account("flextv_password"),
@@ -226,15 +218,13 @@ class LiveStatusResolver:
             elif "look.163.com/" in url:
                 platform = "Look直播"
                 port_info = await spider.get_looklive_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("look")
+                    url=url, cookies=self.cookie("look")
                 )
 
             elif "www.popkontv.com/" in url:
                 platform = "PopkonTV"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_popkontv_stream_url(
                     url=url,
-                    proxy_addr=proxy_address,
                     access_token=self.settings.authorization.get("popkontv_token", ""),
                     username=self.account("popkontv_username"),
                     password=self.account("popkontv_password"),
@@ -245,7 +235,6 @@ class LiveStatusResolver:
                 platform = "TwitCasting"
                 port_info = await spider.get_twitcasting_stream_url(
                     url=url,
-                    proxy_addr=proxy_address,
                     cookies=self.cookie("twitcasting"),
                     account_type=self.account("twitcasting_account_type"),
                     username=self.account("twitcasting_username"),
@@ -255,190 +244,187 @@ class LiveStatusResolver:
             elif "live.baidu.com/" in url:
                 platform = "百度直播"
                 port_info = await spider.get_baidu_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("baidu")
+                    url=url, cookies=self.cookie("baidu")
                 )
 
             elif "weibo.com/" in url:
                 platform = "微博直播"
                 port_info = await spider.get_weibo_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("weibo")
+                    url=url, cookies=self.cookie("weibo")
                 )
 
             elif "kugou.com/" in url:
                 platform = "酷狗直播"
                 port_info = await spider.get_kugou_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("kugou")
+                    url=url, cookies=self.cookie("kugou")
                 )
 
             elif "www.twitch.tv/" in url:
                 platform = "TwitchTV"
                 port_info = await spider.get_twitchtv_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("twitch")
+                    url=url, cookies=self.cookie("twitch")
                 )
 
             elif "www.liveme.com/" in url:
                 platform = "LiveMe"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_liveme_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("liveme")
+                    url=url, cookies=self.cookie("liveme")
                 )
 
             elif "www.huajiao.com/" in url:
                 platform = "花椒直播"
                 port_info = await spider.get_huajiao_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("huajiao")
+                    url=url, cookies=self.cookie("huajiao")
                 )
 
             elif "7u66.com/" in url:
                 platform = "流星直播"
                 port_info = await spider.get_liuxing_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("liuxing")
+                    url=url, cookies=self.cookie("liuxing")
                 )
 
             elif "showroom-live.com/" in url:
                 platform = "ShowRoom"
                 port_info = await spider.get_showroom_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("showroom")
+                    url=url, cookies=self.cookie("showroom")
                 )
 
             elif "live.acfun.cn/" in url or "m.acfun.cn/" in url:
                 platform = "Acfun"
                 port_info = await spider.get_acfun_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("acfun")
+                    url=url, cookies=self.cookie("acfun")
                 )
 
             elif "live.tlclw.com/" in url:
                 platform = "畅聊直播"
                 port_info = await spider.get_changliao_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("changliao")
+                    url=url, cookies=self.cookie("changliao")
                 )
 
             elif "ybw1666.com/" in url:
                 platform = "音播直播"
                 port_info = await spider.get_yinbo_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("yinbo")
+                    url=url, cookies=self.cookie("yinbo")
                 )
 
             elif "www.inke.cn/" in url:
                 platform = "映客直播"
                 port_info = await spider.get_yingke_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("yingke")
+                    url=url, cookies=self.cookie("yingke")
                 )
 
             elif "www.zhihu.com/" in url:
                 platform = "知乎直播"
                 port_info = await spider.get_zhihu_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("zhihu")
+                    url=url, cookies=self.cookie("zhihu")
                 )
 
             elif "chzzk.naver.com/" in url:
                 platform = "CHZZK"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_chzzk_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("chzzk")
+                    url=url, cookies=self.cookie("chzzk")
                 )
 
             elif "www.haixiutv.com/" in url:
                 platform = "嗨秀直播"
                 port_info = await spider.get_haixiu_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("haixiu")
+                    url=url, cookies=self.cookie("haixiu")
                 )
 
             elif "vvxqiu.com/" in url:
                 platform = "VV星球"
                 port_info = await spider.get_vvxqiu_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("vvxqiu")
+                    url=url, cookies=self.cookie("vvxqiu")
                 )
 
             elif "17.live/" in url:
                 platform = "17Live"
                 port_info = await spider.get_17live_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("17live")
+                    url=url, cookies=self.cookie("17live")
                 )
 
             elif "www.lang.live/" in url:
                 platform = "浪Live"
                 port_info = await spider.get_langlive_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("langlive")
+                    url=url, cookies=self.cookie("langlive")
                 )
 
             elif "m.pp.weimipopo.com/" in url:
                 platform = "漂漂直播"
                 port_info = await spider.get_pplive_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("pplive")
+                    url=url, cookies=self.cookie("pplive")
                 )
 
             elif ".6.cn/" in url:
                 platform = "六间房直播"
                 port_info = await spider.get_6room_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("6room")
+                    url=url, cookies=self.cookie("6room")
                 )
 
             elif "lehaitv.com/" in url:
                 platform = "乐嗨直播"
                 port_info = await spider.get_haixiu_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("lehaitv")
+                    url=url, cookies=self.cookie("lehaitv")
                 )
 
             elif "h.catshow168.com/" in url:
                 platform = "花猫直播"
                 port_info = await spider.get_pplive_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("huamao")
+                    url=url, cookies=self.cookie("huamao")
                 )
 
             elif "live.shopee" in url or "shp.ee/" in url:
                 platform = "Shopee"
                 port_info = await spider.get_shopee_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("shopee")
+                    url=url, cookies=self.cookie("shopee")
                 )
 
             elif "www.youtube.com/" in url or "youtu.be/" in url:
                 platform = "Youtube"
                 port_info = await spider.get_youtube_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("youtube")
+                    url=url, cookies=self.cookie("youtube")
                 )
 
             elif "tb.cn" in url or "taobao.com/" in url:
                 platform = "淘宝直播"
                 port_info = await spider.get_taobao_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("taobao")
+                    url=url, cookies=self.cookie("taobao")
                 )
 
             elif "3.cn" in url or "m.jd.com" in url:
                 platform = "京东直播"
                 port_info = await spider.get_jd_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("jd")
+                    url=url, cookies=self.cookie("jd")
                 )
 
             elif "faceit.com/" in url:
                 platform = "faceit"
-                require_proxy(url, proxy_address, platform)
                 port_info = await spider.get_faceit_stream_data(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("faceit")
+                    url=url, cookies=self.cookie("faceit")
                 )
 
             elif "www.miguvideo.com" in url or "m.miguvideo.com" in url:
                 platform = "咪咕直播"
                 port_info = await spider.get_migu_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("migu")
+                    url=url, cookies=self.cookie("migu")
                 )
 
             elif "show.lailianjie.com" in url:
                 platform = "连接直播"
                 port_info = await spider.get_lianjie_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("lianjie")
+                    url=url, cookies=self.cookie("lianjie")
                 )
 
             elif "www.imkktv.com" in url:
                 platform = "来秀直播"
                 port_info = await spider.get_laixiu_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("laixiu")
+                    url=url, cookies=self.cookie("laixiu")
                 )
 
             elif "www.picarto.tv" in url:
                 platform = "Picarto"
                 port_info = await spider.get_picarto_stream_url(
-                    url=url, proxy_addr=proxy_address, cookies=self.cookie("picarto")
+                    url=url, cookies=self.cookie("picarto")
                 )
 
             else:
@@ -495,16 +481,6 @@ class LiveStatusResolver:
             error=display_error,
         )
 
-    def proxy_for_url(self, url: str) -> str | None:
-        if not self.settings.use_proxy or not self.settings.proxy_addr:
-            return None
-        tokens = self.settings.proxy_platforms + self.settings.extra_proxy_platforms
-        if not tokens:
-            return self.settings.proxy_addr
-        for token in tokens:
-            if token and token.strip().lower() in url.lower():
-                return self.settings.proxy_addr
-        return None
 
     def cookie(self, platform: str) -> str:
         return self.settings.cookies.get(platform, "")
@@ -534,16 +510,13 @@ def copy_extra(target: dict[str, Any], source: Any, key: str) -> None:
         target[key] = source[key]
 
 
-def require_proxy(url: str, proxy_address: str | None, platform: str) -> None:
-    return None
-
 
 def format_check_error(error: str) -> str:
     if not error:
         error = "直播间信息获取失败"
     if "不支持的直播间地址" in error:
         return error
-    hint = "检测失败，可能是直播间未开播、地址不可访问或当前网络无法连接该平台；如果一直失败，请开启代理后再尝试。"
+    hint = "检测失败，可能是直播间未开播、地址不可访问或当前网络无法连接该平台。"
     return f"{hint}原始错误：{error}"
 
 
