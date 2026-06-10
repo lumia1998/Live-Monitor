@@ -94,8 +94,8 @@ class MonitorService:
 
     async def check_sources(self, sources: Iterable[RoomSource]) -> list[LiveStatus]:
         sources = list(sources)
+        statuses = await self.resolver.check_sources(sources) if sources else []
         async with self._check_lock:
-            statuses = await self.resolver.check_sources(sources) if sources else []
             for status in statuses:
                 self._apply_live_duration(status)
                 self.snapshot.rooms[status.id] = status

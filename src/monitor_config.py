@@ -284,8 +284,10 @@ class ConfigStore:
     def get_value(self, section: str, option: str, default: str = "") -> str:
         with self._lock:
             parser = self._parser()
+            had_option = parser.has_section(section) and parser.has_option(section, option)
             value = self._get(parser, section, option, default)
-            self._write_parser(parser)
+            if not had_option:
+                self._write_parser(parser)
             return value
 
     def set_value(self, section: str, option: str, value: str) -> None:
