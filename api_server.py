@@ -33,7 +33,10 @@ class CheckRequest(BaseModel):
     room_id: str | None = None
     platform: str = ""
     name: str = ""
-    trigger_push: bool = False
+
+
+class BatchCheckRequest(BaseModel):
+    rooms: list[CheckRequest] = Field(default_factory=list)
 
 
 @asynccontextmanager
@@ -47,7 +50,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Live Monitor API",
-    description="直播状态监控提醒服务，不包含直播录制功能。",
+    description="直播状态检测服务，不包含直播录制和通知推送功能。",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -66,6 +69,22 @@ def require_api_token(authorization: str = Header(default=""), x_api_token: str 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API token")
 
 
+def source_from_check_request(payload: CheckRequest) -> RoomSource:
+    if payload.room_id:
+        source = monitor_service.config_store.find_room(payload.room_id)
+        if not source:
+            raise HTTPException(status_code=404, detail=f"Room not found: {payload.room_id}")
+        return source
+    if payload.url:
+        return RoomSource(
+            url=normalize_url(payload.url),
+            platform=payload.platform,
+            name=payload.name,
+            enabled=True,
+        )
+    raise HTTPException(status_code=400, detail="Either room_id or url is required")
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "running": monitor_service.get_snapshot().running}
@@ -81,25 +100,25 @@ def get_status(include_stream_url: bool = Query(default=False)) -> dict[str, Any
 @app.post("/api/check", dependencies=[Depends(require_api_token)])
 async def check_once(payload: CheckRequest) -> dict[str, Any]:
     monitor_service.reload_settings()
-    if payload.room_id:
-        source = monitor_service.config_store.find_room(payload.room_id)
-        if not source:
-            raise HTTPException(status_code=404, detail="Room not found")
-    elif payload.url:
-        source = RoomSource(
-            url=normalize_url(payload.url),
-            platform=payload.platform,
-            name=payload.name,
-            enabled=True,
-        )
-    else:
-        statuses = await monitor_service.check_all(trigger_push=payload.trigger_push)
+    if not payload.room_id and not payload.url:
+        statuses = await monitor_service.check_all()
         return {
             "rooms": [status.to_dict(include_stream_url=monitor_service.settings.include_stream_url) for status in statuses]
         }
 
-    status_result = await monitor_service.check_room(source, trigger_push=payload.trigger_push)
+    source = source_from_check_request(payload)
+    status_result = await monitor_service.check_room(source)
     return status_result.to_dict(include_stream_url=monitor_service.settings.include_stream_url)
+
+
+@app.post("/api/check/batch", dependencies=[Depends(require_api_token)])
+async def check_batch(payload: BatchCheckRequest) -> dict[str, Any]:
+    monitor_service.reload_settings()
+    sources = [source_from_check_request(room) for room in payload.rooms]
+    statuses = await monitor_service.check_sources(sources)
+    return {
+        "rooms": [status.to_dict(include_stream_url=monitor_service.settings.include_stream_url) for status in statuses]
+    }
 
 
 @app.get("/api/rooms", dependencies=[Depends(require_api_token)])

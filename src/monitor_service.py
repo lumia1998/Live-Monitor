@@ -68,7 +68,7 @@ class MonitorService:
         try:
             while not self._stop_event.is_set():
                 try:
-                    await self.check_all(trigger_push=True)
+                    await self.check_all()
                 except Exception as exc:
                     logger.error(f"直播监控循环异常: {exc}")
                     self.snapshot.errors.append(str(exc))
@@ -83,18 +83,18 @@ class MonitorService:
             self.snapshot.running = False
             logger.info("直播监控后台任务已停止")
 
-    async def check_all(self, trigger_push: bool = True) -> list[LiveStatus]:
+    async def check_all(self) -> list[LiveStatus]:
         self.reload_settings()
         sources = self.list_sources(include_disabled=False)
-        return await self.check_sources(sources, trigger_push=trigger_push)
+        return await self.check_sources(sources)
 
-    async def check_room(self, source: RoomSource, trigger_push: bool = False) -> LiveStatus:
-        statuses = await self.check_sources([source], trigger_push=trigger_push)
+    async def check_room(self, source: RoomSource) -> LiveStatus:
+        statuses = await self.check_sources([source])
         return statuses[0]
 
-    async def check_sources(self, sources: Iterable[RoomSource], trigger_push: bool = True) -> list[LiveStatus]:
+    async def check_sources(self, sources: Iterable[RoomSource]) -> list[LiveStatus]:
+        sources = list(sources)
         async with self._check_lock:
-            sources = list(sources)
             statuses = await self.resolver.check_sources(sources) if sources else []
             for status in statuses:
                 self._apply_live_duration(status)
@@ -111,9 +111,7 @@ class MonitorService:
         checked_at = parse_datetime(status.checked_at)
 
         if status.error:
-            started_at = self._detected_live_started_at.get(status.id)
-            if started_at:
-                set_live_duration(status, started_at, checked_at)
+            self._detected_live_started_at.pop(status.id, None)
             return
 
         if not status.is_live:

@@ -146,7 +146,7 @@ def split_csv(value: str) -> list[str]:
 
 
 def normalize_url(url: str) -> str:
-    url = url.strip()
+    url = url.strip().rstrip("/")
     if url and "://" not in url:
         url = "https://" + url
     return url
@@ -270,9 +270,12 @@ class ConfigStore:
     def _get(self, parser: configparser.RawConfigParser, section: str, option: str, default: str) -> str:
         if not parser.has_section(section):
             parser.add_section(section)
+            parser.set(section, option, str(default))
+            return str(default)
         if not parser.has_option(section, option):
             parser.set(section, option, str(default))
-        return parser.get(section, option, fallback=str(default)).strip()
+            return str(default)
+        return parser.get(section, option).strip()
 
     def _write_parser(self, parser: configparser.RawConfigParser) -> None:
         with self.config_file.open("w", encoding=TEXT_ENCODING) as fp:
@@ -296,6 +299,7 @@ class ConfigStore:
     def load_runtime_settings(self) -> RuntimeSettings:
         with self._lock:
             parser = self._parser()
+            original_sections = {s: dict(parser.items(s)) for s in parser.sections()}
 
             def get(section: str, option: str, default: str = "") -> str:
                 return self._get(parser, section, option, default)
@@ -333,7 +337,11 @@ class ConfigStore:
                 authorization={"popkontv_token": get("Authorization", "popkontv_token", "")},
                 api=api,
             )
-            self._write_parser(parser)
+
+            new_sections = {s: dict(parser.items(s)) for s in parser.sections()}
+            if new_sections != original_sections:
+                self._write_parser(parser)
+
             return settings
 
     def load_room_sources(self, include_disabled: bool = True) -> list[RoomSource]:
