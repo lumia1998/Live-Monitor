@@ -16,7 +16,7 @@ def main() -> None:
     print("|                    Live Monitor                   |")
     print("-----------------------------------------------------")
     print(f"版本号: {VERSION}")
-    print("模式: 直播监控提醒 + API，不执行直播录制")
+    print("模式: 直播状态检测 + API，不执行直播录制和通知推送")
     print(f"API: http://{settings.api.host}:{settings.api.port}")
     print(".....................................................")
     uvicorn.run("api_server:app", host=settings.api.host, port=settings.api.port, reload=False)

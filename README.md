@@ -1,12 +1,11 @@
 # Live Monitor
 
-Live Monitor 是一个多平台直播间开播/关播监控和提醒服务。基于 [DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) 的解析能力，去除直播录制流程，专注于状态检测、消息推送和 HTTP API。
+Live Monitor 是一个多平台直播间开播/关播状态检测服务。基于 [DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) 的解析能力，去除直播录制流程，专注于状态检测和 HTTP API；通知推送建议交由 Koishi 插件或其他 API 调用方处理。
 
 ## 功能特性
 
-- 定时检测 `config/URL_config.ini` 中配置的直播间状态
-- 开播/关播变化时自动推送通知（支持多渠道）
-- 提供 HTTP API，支持查询状态、手动检测、动态增删改关注列表、启停后台监控
+- 定时检测 `config/URL_config.ini` 中配置的直播间状态并缓存结果
+- 提供 HTTP API，支持查询状态、单个/批量手动检测、动态增删改关注列表、启停后台监控
 - 返回丰富的直播元数据：开播状态、直播标题、封面、头像、观看人数、人气、点赞数、分区、开播时间
 - 抖音直播间离线时也会尽量保留接口返回的主播名、标题、头像等可用资料
 - 不依赖 FFmpeg，不获取直播流地址，不录制视频
@@ -113,6 +112,8 @@ X-API-Token: your-token
 Authorization: Bearer your-token
 ```
 
+如果配合 Koishi 插件使用，请在插件的 `apiToken` 配置项中填写同一个令牌。
+
 ## API
 
 | Method | Path | 说明 |
@@ -120,6 +121,7 @@ Authorization: Bearer your-token
 | GET | `/health` | 健康检查 |
 | GET | `/api/status` | 获取后台监控缓存状态 |
 | POST | `/api/check` | 手动检测所有关注或单个直播间 |
+| POST | `/api/check/batch` | 批量检测多个直播间，适合插件轮询 |
 | GET | `/api/rooms` | 获取关注列表 |
 | POST | `/api/rooms` | 新增或覆盖关注 |
 | PATCH | `/api/rooms/{room_id}` | 修改关注配置 |
@@ -145,6 +147,11 @@ curl -X POST http://127.0.0.1:8000/api/check \
 curl -X POST http://127.0.0.1:8000/api/check \
   -H "Content-Type: application/json" \
   -d '{"url":"https://live.douyin.com/745964462470"}'
+
+# 批量检测多个直播间（不写入关注列表）
+curl -X POST http://127.0.0.1:8000/api/check/batch \
+  -H "Content-Type: application/json" \
+  -d '{"rooms":[{"url":"https://live.douyin.com/745964462470"},{"url":"https://live.bilibili.com/320","name":"示例主播"}]}'
 
 # 新增关注
 curl -X POST http://127.0.0.1:8000/api/rooms \
@@ -173,16 +180,19 @@ curl -X POST http://127.0.0.1:8000/api/rooms \
 仓库内提供了 Koishi 插件草稿（`koishi-plugin-live-monitor/`），适用于以下架构：
 
 - 后端使用 Docker 部署 Live Monitor，只负责检测状态并提供 API
-- Koishi 插件维护主播列表，定时调用后端 `/api/check` 并在 Koishi 内推送提醒
+- Koishi 插件维护主播列表，定时调用后端 `/api/check/batch` 并在 Koishi 内推送提醒
 
 插件调用后端的请求体示例：
 
 ```json
 {
-  "platform": "抖音",
-  "name": "示例主播",
-  "url": "https://live.douyin.com/745964462470",
-  "trigger_push": false
+  "rooms": [
+    {
+      "platform": "抖音",
+      "name": "示例主播",
+      "url": "https://live.douyin.com/745964462470"
+    }
+  ]
 }
 ```
 
