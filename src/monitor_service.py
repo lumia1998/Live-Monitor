@@ -36,7 +36,6 @@ class MonitorService:
         self.settings: RuntimeSettings = self.config_store.load_runtime_settings()
         self.resolver = LiveStatusResolver(self.settings)
         self.snapshot = MonitorSnapshot()
-        self._previous_live_state: dict[str, bool] = {}
         self._detected_live_started_at: dict[str, dt.datetime] = {}
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -44,6 +43,11 @@ class MonitorService:
 
     def reload_settings(self) -> RuntimeSettings:
         self.settings = self.config_store.load_runtime_settings()
+        self.resolver.refresh_settings(self.settings)
+        return self.settings
+
+    async def reload_settings_async(self) -> RuntimeSettings:
+        self.settings = await asyncio.to_thread(self.config_store.load_runtime_settings)
         self.resolver.refresh_settings(self.settings)
         return self.settings
 
@@ -84,8 +88,15 @@ class MonitorService:
             logger.info("直播监控后台任务已停止")
 
     async def check_all(self) -> list[LiveStatus]:
-        self.reload_settings()
-        sources = self.list_sources(include_disabled=False)
+        await self.reload_settings_async()
+        sources = await asyncio.to_thread(self.list_sources, include_disabled=False)
+        active_ids = {source.id for source in sources}
+        for room_id in list(self.snapshot.rooms.keys()):
+            if room_id not in active_ids:
+                self.snapshot.rooms.pop(room_id, None)
+        for room_id in list(self._detected_live_started_at.keys()):
+            if room_id not in active_ids:
+                self._detected_live_started_at.pop(room_id, None)
         return await self.check_sources(sources)
 
     async def check_room(self, source: RoomSource) -> LiveStatus:
@@ -110,7 +121,6 @@ class MonitorService:
                                 setattr(status, field, cached_val)
                 self.snapshot.rooms[status.id] = status
                 self._apply_status_updates(status)
-                self._previous_live_state[status.id] = status.is_live
             if statuses:
                 self.snapshot.last_check_at = statuses[-1].checked_at
             self.snapshot.next_check_in = self.settings.check_interval
@@ -141,12 +151,15 @@ class MonitorService:
         new_cookies = status.extra.get("new_cookies")
         if new_cookies and status.platform == "SOOP":
             self.config_store.set_value("Cookie", "sooplive_cookie", new_cookies)
+            self.settings.cookies["sooplive"] = new_cookies
         elif new_cookies and status.platform == "FlexTV":
             self.config_store.set_value("Cookie", "flextv_cookie", new_cookies)
+            self.settings.cookies["flextv"] = new_cookies
 
         new_token = status.extra.get("new_token")
         if new_token and status.platform == "PopkonTV":
             self.config_store.set_value("Authorization", "popkontv_token", new_token)
+            self.settings.authorization["popkontv_token"] = new_token
 
     def get_snapshot(self) -> MonitorSnapshot:
         return self.snapshot
@@ -171,7 +184,6 @@ class MonitorService:
         deleted = self.config_store.delete_room(room_id)
         if deleted:
             self.snapshot.rooms.pop(room_id, None)
-            self._previous_live_state.pop(room_id, None)
             self._detected_live_started_at.pop(room_id, None)
         return deleted
 
@@ -201,7 +213,7 @@ def format_duration(seconds: int) -> str:
     hours, minutes = divmod(minutes, 60)
 
     if days:
-        return f"{days}天{hours}小时"
+        return f"{days}天{hours}小时{minutes}分钟"
     if hours:
         return f"{hours}小时{minutes}分钟"
     return f"{minutes}分钟"
