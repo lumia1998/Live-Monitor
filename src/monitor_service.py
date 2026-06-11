@@ -98,6 +98,16 @@ class MonitorService:
         async with self._check_lock:
             for status in statuses:
                 self._apply_live_duration(status)
+                # 关播时保留上一次开播状态的封面、头像、标题等画面数据
+                if not status.is_live and not status.error:
+                    cached = self.snapshot.rooms.get(status.id)
+                    if cached and cached.is_live:
+                        for field in ("cover_url", "avatar_url", "title", "anchor_name",
+                                      "viewer_count", "popularity", "like_count",
+                                      "area_name", "started_at", "category"):
+                            cached_val = getattr(cached, field, None)
+                            if cached_val and not getattr(status, field, None):
+                                setattr(status, field, cached_val)
                 self.snapshot.rooms[status.id] = status
                 self._apply_status_updates(status)
                 self._previous_live_state[status.id] = status.is_live
