@@ -42,6 +42,7 @@ def trace_error_decorator(func: callable) -> callable:
             return func(*args, **kwargs)
         except execjs.ProgramError:
             logger.warning('Failed to execute JS code. Please check if the Node.js environment')
+            return {}
         except Exception as e:
             error_line = traceback.extract_tb(e.__traceback__)[-1].lineno
             error_info = f"message: type: {type(e).__name__}, {str(e)} in function {func.__name__} at line: {error_line}"
@@ -129,6 +130,11 @@ def remove_emojis(text: str, replace_text: str = '') -> str:
         "\U0001FA00-\U0001FA6F"  # Chess Symbols
         "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
         "\U00002702-\U000027B0"  # Dingbats
+        "\U0000FE00-\U0000FE0F"  # Variation Selectors
+        "\U0000200D"             # Zero Width Joiner
+        "\U00002600-\U000026FF"  # Misc Symbols
+        "\U0001F000-\U0001F02F"  # Mahjong Tiles
+        "\U0001F0A0-\U0001F0FF"  # Playing Cards
         "]+",
         flags=re.UNICODE
     )

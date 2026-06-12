@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -41,7 +42,7 @@ class BatchCheckRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = monitor_service.reload_settings()
+    settings = await monitor_service.reload_settings_async()
     if settings.api.start_background_monitor:
         await monitor_service.start()
     yield
@@ -57,7 +58,7 @@ app = FastAPI(
 
 
 def require_api_token(authorization: str = Header(default=""), x_api_token: str = Header(default="")) -> None:
-    settings = monitor_service.reload_settings()
+    settings = monitor_service.settings
     token = settings.api.token
     if not token:
         return
@@ -99,7 +100,7 @@ def get_status(include_stream_url: bool = Query(default=False)) -> dict[str, Any
 
 @app.post("/api/check", dependencies=[Depends(require_api_token)])
 async def check_once(payload: CheckRequest) -> dict[str, Any]:
-    monitor_service.reload_settings()
+    await monitor_service.reload_settings_async()
     if not payload.room_id and not payload.url:
         statuses = await monitor_service.check_all()
         return {
@@ -113,11 +114,23 @@ async def check_once(payload: CheckRequest) -> dict[str, Any]:
 
 @app.post("/api/check/batch", dependencies=[Depends(require_api_token)])
 async def check_batch(payload: BatchCheckRequest) -> dict[str, Any]:
-    monitor_service.reload_settings()
-    sources = [source_from_check_request(room) for room in payload.rooms]
+    await monitor_service.reload_settings_async()
+    sources = []
+    errors = []
+    for i, room in enumerate(payload.rooms):
+        try:
+            source = source_from_check_request(room)
+            sources.append(source)
+        except HTTPException as e:
+            errors.append(f"Room {i}: {e.detail}")
+    
+    if not sources:
+        return {"rooms": [], "errors": errors}
+    
     statuses = await monitor_service.check_sources(sources)
     return {
-        "rooms": [status.to_dict(include_stream_url=monitor_service.settings.include_stream_url) for status in statuses]
+        "rooms": [status.to_dict(include_stream_url=monitor_service.settings.include_stream_url) for status in statuses],
+        "errors": errors
     }
 
 
