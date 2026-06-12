@@ -3088,6 +3088,41 @@ async def get_shopee_stream_url(url: str, proxy_addr: OptionalStr = None, cookie
     return result
 
 
+def extract_json_by_braces(text: str, start_index: int) -> str:
+    brace_start = text.find('{', start_index)
+    if brace_start == -1:
+        return ""
+    
+    balance = 0
+    in_string = False
+    escape = False
+    quote_char = None
+    
+    for i in range(brace_start, len(text)):
+        char = text[i]
+        if escape:
+            escape = False
+            continue
+        if char == '\\':
+            escape = True
+            continue
+        if in_string:
+            if char == quote_char:
+                in_string = False
+            continue
+        if char in ('"', "'", '`'):
+            in_string = True
+            quote_char = char
+            continue
+        if char == '{':
+            balance += 1
+        elif char == '}':
+            balance -= 1
+            if balance == 0:
+                return text[brace_start:i+1]
+    return ""
+
+
 @trace_error_decorator
 async def get_youtube_stream_url(url: str, proxy_addr: OptionalStr = None, cookies: OptionalStr = None) -> dict:
     headers = {
@@ -3099,14 +3134,14 @@ async def get_youtube_stream_url(url: str, proxy_addr: OptionalStr = None, cooki
         headers['Cookie'] = cookies
 
     html_str = await async_req(url, proxy_addr=proxy_addr, headers=headers, abroad=True)
-    match = (
-        re.search(r'var ytInitialPlayerResponse = (.*?);var meta = document\.createElement', html_str, re.DOTALL)
-        or re.search(r'var ytInitialPlayerResponse = (.*?);</script>', html_str, re.DOTALL)
-        or re.search(r'ytInitialPlayerResponse\s*=\s*(\{.*?\});', html_str, re.DOTALL)
-    )
-    if not match:
+    idx = html_str.find("ytInitialPlayerResponse = ")
+    if idx == -1:
+        idx = html_str.find("ytInitialPlayerResponse=")
+    if idx == -1:
         raise RuntimeError("No YouTube player response found")
-    json_str = match.group(1)
+    json_str = extract_json_by_braces(html_str, idx)
+    if not json_str:
+        raise RuntimeError("Failed to parse YouTube player response braces")
     json_data = json.loads(json_str)
     result = {"anchor_name": "", "is_live": False}
     if 'videoDetails' not in json_data:

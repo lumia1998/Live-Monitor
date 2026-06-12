@@ -111,7 +111,9 @@ class MonitorService:
         checked_at = parse_datetime(status.checked_at)
 
         if status.error:
-            self._detected_live_started_at.pop(status.id, None)
+            started_at = self._detected_live_started_at.get(status.id)
+            if started_at:
+                set_live_duration(status, started_at, checked_at)
             return
 
         if not status.is_live:
