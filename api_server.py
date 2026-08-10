@@ -172,6 +172,21 @@ def delete_room(room_id: str) -> dict[str, Any]:
     return {"deleted": room.to_dict()}
 
 
+@app.get("/api/sessions", dependencies=[Depends(require_api_token)])
+def list_sessions(
+    room_id: str = Query(default=""),
+    include_incomplete: bool = Query(default=True),
+    limit: int = Query(default=500, ge=1, le=5000),
+) -> dict[str, Any]:
+    """查询直播场次记录（持久化在后端 SQLite，重启不丢失）。"""
+    sessions = monitor_service.session_store.list_sessions(
+        room_id=room_id or None,
+        include_incomplete=include_incomplete,
+        limit=limit,
+    )
+    return {"sessions": sessions, "count": len(sessions)}
+
+
 @app.post("/api/monitor/start", dependencies=[Depends(require_api_token)])
 async def start_monitor() -> dict[str, Any]:
     await monitor_service.start()

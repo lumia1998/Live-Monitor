@@ -5,11 +5,16 @@ import asyncio
 import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from src.live_status import LiveStatus, LiveStatusResolver
 from src.logger import logger
 from src.monitor_config import ConfigStore, RoomSource, RuntimeSettings
+from src.session_store import SessionStore
+
+# 场次记录数据库默认路径（需要 docker-compose 挂载 ./data:/app/data）
+DEFAULT_SESSION_DB = Path(__file__).resolve().parent.parent / "data" / "live_sessions.db"
 
 
 @dataclass(slots=True)
@@ -31,12 +36,13 @@ class MonitorSnapshot:
 
 
 class MonitorService:
-    def __init__(self, config_store: ConfigStore | None = None) -> None:
+    def __init__(self, config_store: ConfigStore | None = None, session_db: str | Path | None = None) -> None:
         self.config_store = config_store or ConfigStore()
         self.settings: RuntimeSettings = self.config_store.load_runtime_settings()
         self.resolver = LiveStatusResolver(self.settings)
         self.snapshot = MonitorSnapshot()
         self._detected_live_started_at: dict[str, dt.datetime] = {}
+        self.session_store = SessionStore(session_db or DEFAULT_SESSION_DB)
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._check_lock = asyncio.Lock()
@@ -57,6 +63,14 @@ class MonitorService:
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
+        # 后端重启兜底：把所有未完成场次收尾（重启前若正在直播，
+        # 重启后内存状态已丢失，无法再精确补 ended_at，按当前时间收尾）
+        try:
+            rooms = self.list_sources(include_disabled=False)
+            for source in rooms:
+                self.session_store.complete_open_sessions(source.id)
+        except Exception as exc:
+            logger.warning(f"收尾未完成场次失败：{exc}")
         self._stop_event = asyncio.Event()
         self.snapshot.running = True
         self._task = asyncio.create_task(self._run_loop(), name="live-monitor-loop")
@@ -137,7 +151,10 @@ class MonitorService:
             return
 
         if not status.is_live:
-            self._detected_live_started_at.pop(status.id, None)
+            # 关播：把内存中记录的开播时间拿出来，补上 ended_at 收尾
+            ended_at = self._detected_live_started_at.pop(status.id, None)
+            if ended_at is not None:
+                self._record_session_end(status, ended_at, checked_at)
             status.detected_started_at = ""
             status.live_duration_seconds = None
             status.live_duration = ""
@@ -147,7 +164,83 @@ class MonitorService:
         if not started_at:
             started_at = checked_at
             self._detected_live_started_at[status.id] = started_at
+            self._record_session_start(status, started_at)
+        else:
+            self._record_session_ongoing(status, started_at)
         set_live_duration(status, started_at, checked_at)
+
+    def _record_session_start(self, status: LiveStatus, started_at: dt.datetime) -> None:
+        """开播：写入一条新的场次记录。"""
+        try:
+            source = self._source_for_room(status.id)
+            self.session_store.upsert_session(
+                status.id,
+                status.url,
+                platform=status.platform,
+                display_name=status.display_name(),
+                avatar_url=status.avatar_url,
+                cover_url=status.cover_url,
+                title=status.title,
+                started_at=started_at.isoformat(timespec="seconds"),
+                completed=False,
+                peak_viewer_count=_int_or_zero(status.viewer_count, status.popularity),
+                final_like_count=_int_or_zero(status.like_count),
+            )
+            logger.info(f"场次开始：{status.display_name()} ({status.platform}) @ {started_at.isoformat(timespec='seconds')}")
+        except Exception as exc:
+            logger.warning(f"记录场次开始失败（{status.url}）：{exc}")
+
+    def _record_session_ongoing(self, status: LiveStatus, started_at: dt.datetime) -> None:
+        """直播中：更新峰值人数与点赞数（同一场次）。"""
+        try:
+            ended_at = None
+            self.session_store.upsert_session(
+                status.id,
+                status.url,
+                platform=status.platform,
+                display_name=status.display_name(),
+                avatar_url=status.avatar_url,
+                cover_url=status.cover_url,
+                title=status.title,
+                started_at=started_at.isoformat(timespec="seconds"),
+                completed=False,
+                peak_viewer_count=_int_or_zero(status.viewer_count, status.popularity),
+                final_like_count=_int_or_zero(status.like_count),
+            )
+        except Exception as exc:
+            logger.warning(f"更新场次失败（{status.url}）：{exc}")
+
+    def _record_session_end(self, status: LiveStatus, started_at: dt.datetime, ended_at: dt.datetime) -> None:
+        """关播：补 ended_at 并标记完成。"""
+        try:
+            duration = max(0, int((ended_at - started_at).total_seconds()))
+            self.session_store.upsert_session(
+                status.id,
+                status.url,
+                platform=status.platform,
+                display_name=status.display_name(),
+                avatar_url=status.avatar_url,
+                cover_url=status.cover_url,
+                title=status.title,
+                started_at=started_at.isoformat(timespec="seconds"),
+                ended_at=ended_at.isoformat(timespec="seconds"),
+                completed=True,
+                duration_seconds=duration,
+                peak_viewer_count=_int_or_zero(status.viewer_count, status.popularity),
+                final_like_count=_int_or_zero(status.like_count),
+            )
+            logger.info(f"场次结束：{status.display_name()} ({status.platform}) 时长 {format_duration(duration)}")
+        except Exception as exc:
+            logger.warning(f"记录场次结束失败（{status.url}）：{exc}")
+
+    def _source_for_room(self, room_id: str) -> RoomSource | None:
+        try:
+            for source in self.config_store.load_room_sources(include_disabled=True):
+                if source.id == room_id:
+                    return source
+        except Exception:
+            pass
+        return None
 
     def _apply_status_updates(self, status: LiveStatus) -> None:
         new_cookies = status.extra.get("new_cookies")
@@ -197,6 +290,18 @@ def parse_datetime(value: str) -> dt.datetime:
         except ValueError:
             pass
     return dt.datetime.now().astimezone()
+
+
+def _int_or_zero(*values: Any) -> int:
+    """取第一个可解析为非负整数的值，否则返回 0。"""
+    for value in values:
+        try:
+            number = int(value)
+            if number > 0:
+                return number
+        except (TypeError, ValueError):
+            continue
+    return 0
 
 
 def set_live_duration(status: LiveStatus, started_at: dt.datetime, checked_at: dt.datetime) -> None:
