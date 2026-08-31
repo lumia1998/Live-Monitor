@@ -111,6 +111,11 @@ async def get_douyin_web_stream_data(url: str, proxy_addr: OptionalStr = None, c
         except Exception as e:
             raise Exception(f"Douyin web data fetch error, because {e}.")
 
+        # Status-only consumers (such as Live-Monitor) must still be able to
+        # detect special live modes that do not expose a stream_url.
+        if room_data.get('status') == 2 and 'stream_url' not in room_data:
+            return room_data
+
         if room_data['status'] == 2:
             if 'stream_url' not in room_data:
                 raise RuntimeError(
@@ -196,6 +201,11 @@ async def get_douyin_app_stream_data(url: str, proxy_addr: OptionalStr = None, c
                 unique_id = await get_unique_id(url, proxy_addr=proxy_addr)
                 return await get_douyin_stream_data(f'https://live.douyin.com/{unique_id}')
 
+        # A room can be live without exposing pull URLs (for example radio
+        # mode). Preserve the status for callers that do not record streams.
+        if room_data.get('status') == 2 and 'stream_url' not in room_data:
+            return room_data
+
         if room_data['status'] == 2:
             if 'stream_url' not in room_data:
                 raise RuntimeError(
@@ -255,6 +265,11 @@ async def get_douyin_stream_data(url: str, proxy_addr: OptionalStr = None, cooki
         json_data = json.loads(room_store)['roomInfo']['room']
         json_data['anchor_name'] = anchor_name
         if 'status' in json_data and json_data['status'] == 4:
+            return json_data
+        # The HTML parser may identify a live room even when Douyin omits
+        # stream_url. Return the room status instead of falling back to the
+        # app parser, which also expects stream_url for recording.
+        if json_data.get('status') == 2 and 'stream_url' not in json_data:
             return json_data
         stream_orientation = json_data['stream_url']['stream_orientation']
         match_json_str2 = re.findall(r'"(\{\\"common\\":.*?)"]\)</script><script nonce=', html_str)
